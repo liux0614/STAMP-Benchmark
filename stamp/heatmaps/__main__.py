@@ -220,10 +220,9 @@ def main(
 
             ax.imshow(score_im)
             ax.set_title(f"{category} {preds[0,pos_idx]:1.2f}")
-            target_size=np.array(score_im.shape[:2][::-1]) * 8
-            # latest PIL requires shape to be a tuple (), not array []
+
             Image.fromarray(np.uint8(score_im * 255)).resize(
-                tuple(target_size), resample=Image.NEAREST
+                np.array(score_im.shape[:2][::-1]) * 8, resample=Image.NEAREST
             ).save(
                 slide_output_dir
                 / f"scores-{h5_path.stem}--score_{category}={preds[0][pos_idx]:0.2f}.png"

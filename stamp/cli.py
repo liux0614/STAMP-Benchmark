@@ -1,38 +1,21 @@
 from omegaconf import OmegaConf, DictConfig
-from omegaconf.listconfig import ListConfig
 import argparse
 from pathlib import Path
 import os
 from typing import Iterable, Optional
 import shutil
+import torch
+import timm
 
 NORMALIZATION_TEMPLATE_URL = "https://github.com/Avic3nna/STAMP/blob/main/resources/normalization_template.jpg?raw=true"
 CTRANSPATH_WEIGHTS_URL = "https://drive.google.com/u/0/uc?id=1DoDx_70_TLj98gTf6YTXnu4tFhsFocDX&export=download"
+CHIEF_WEIGHTS_URL = "https://drive.google.com/uc?id=1_vgRF1QXa8sPCOpJ1S9BihwZhXQMOVJc&export=download"
 DEFAULT_RESOURCES_DIR = Path(__file__).with_name("resources")
 DEFAULT_CONFIG_FILE = Path("config.yaml")
 STAMP_FACTORY_SETTINGS = Path(__file__).with_name("config.yaml")
 
 class ConfigurationError(Exception):
     pass
-
-def check_path_exists(path):
-    directories = path.split(os.path.sep)
-    current_path = os.path.sep
-    for directory in directories:
-        current_path = os.path.join(current_path, directory)
-        if not os.path.exists(current_path):
-            return False, directory
-    return True, None
-
-
-def check_and_handle_path(path, path_key, prefix):
-    exists, directory = check_path_exists(path)
-    if not exists:
-        print(f"From input path: '{path}'")
-        print(f"Directory '{directory}' does not exist.")
-        print(f"Check the input path of '{path_key}' from the '{prefix}' section.")
-        raise SystemExit(f"Stopping {prefix} due to faulty user input...")
-
 
 def _config_has_key(cfg: DictConfig, key: str):
     try:
@@ -44,27 +27,12 @@ def _config_has_key(cfg: DictConfig, key: str):
         return False
     return True
 
-def require_configs(cfg: DictConfig, keys: Iterable[str], prefix: Optional[str] = None,
-                    paths_to_check: Iterable[str] = []):
-    keys = [f"{prefix}.{k}" for k in keys]
+def require_configs(cfg: DictConfig, keys: Iterable[str], prefix: Optional[str] = None):
+    prefix = f"{prefix}." if prefix else ""
+    keys = [f"{prefix}{k}" for k in keys]
     missing = [k for k in keys if not _config_has_key(cfg, k)]
     if len(missing) > 0:
         raise ConfigurationError(f"Missing required configuration keys: {missing}")
-
-    # Check if paths exist
-    for path_key in paths_to_check:
-        try:
-            #for all but modeling.statistics
-            path = cfg[prefix][path_key]
-        except:
-            #for modeling.statistics, handling the pred_csvs
-            path = OmegaConf.select(cfg, f"{prefix}.{path_key}")
-        if isinstance(path, ListConfig):
-            for p in path:
-                check_and_handle_path(p, path_key, prefix)
-        else:
-            check_and_handle_path(path, path_key, prefix)
-
 
 def create_config_file(config_file: Optional[Path]):
     """Create a new config file at the specified path (by copying the default config file)."""
@@ -119,12 +87,33 @@ def run_cli(args: argparse.Namespace):
                 r = requests.get(NORMALIZATION_TEMPLATE_URL)
                 with normalization_template_path.open("wb") as f:
                     f.write(r.content)
+
             # Download feature extractor model
             feat_extractor = cfg.preprocessing.feat_extractor
             if feat_extractor == 'ctp':
                 model_path = Path(f"{os.environ['STAMP_RESOURCES_DIR']}/ctranspath.pth")
+            elif feat_extractor == 'chief-ctp':
+                model_path = Path(f"{os.environ['STAMP_RESOURCES_DIR']}/chief-ctp.pth")
             elif feat_extractor == 'uni':
                 model_path = Path(f"{os.environ['STAMP_RESOURCES_DIR']}/uni/vit_large_patch16_224.dinov2.uni_mass100k/pytorch_model.bin")
+            elif feat_extractor == 'provgp':
+                model_path = Path(f"{os.environ['STAMP_RESOURCES_DIR']}/prov-gigapath/pytorch_model.bin")
+            elif feat_extractor == 'hibou-b':
+                model_path = Path(f"{os.environ['STAMP_RESOURCES_DIR']}/hibou-b/pytorch_model.bin")
+            elif feat_extractor == 'hibou-l':
+                model_path = Path(f"{os.environ['STAMP_RESOURCES_DIR']}/hibou-l/pytorch_model.bin")
+            elif feat_extractor == 'kaiko':
+                model_path = Path(f"{os.environ['STAMP_RESOURCES_DIR']}/kaiko-vitl14/pytorch_model.bin")
+            elif feat_extractor == 'conch':
+                model_path = Path(f"{os.environ['STAMP_RESOURCES_DIR']}/conch/pytorch_model.bin")
+            elif feat_extractor == 'phikon':
+                model_path = Path(f"{os.environ['STAMP_RESOURCES_DIR']}/phikon/pytorch_model.bin")
+            elif feat_extractor == 'virchow':
+                model_path = Path(f"{os.environ['STAMP_RESOURCES_DIR']}/virchow/pytorch_model.bin")
+            elif feat_extractor == 'virchow2':
+                model_path = Path(f"{os.environ['STAMP_RESOURCES_DIR']}/virchow2/pytorch_model.bin")
+            elif feat_extractor == 'hoptimus0':
+                model_path = Path(f"{os.environ['STAMP_RESOURCES_DIR']}/hoptimus0/pytorch_model.bin")
             model_path.parent.mkdir(parents=True, exist_ok=True)
             if model_path.exists():
                 print(f"Skipping download, feature extractor model already exists at {model_path}")
@@ -133,18 +122,205 @@ def run_cli(args: argparse.Namespace):
                     print(f"Downloading CTransPath weights to {model_path}")
                     import gdown
                     gdown.download(CTRANSPATH_WEIGHTS_URL, str(model_path))
+                elif feat_extractor == 'chief-ctp':
+                    print(f"Downloading CHIEF weights to {model_path}")
+                    import gdown
+                    gdown.download(CHIEF_WEIGHTS_URL, str(model_path))
                 elif feat_extractor == 'uni':
                     print(f"Downloading UNI weights")
                     from uni.get_encoder import get_encoder
                     get_encoder(enc_name='uni', checkpoint='pytorch_model.bin', assets_dir=f"{os.environ['STAMP_RESOURCES_DIR']}/uni")
+                elif feat_extractor == 'provgp':
+                    print("Downloading ProvGP weights")
+                    assets_dir = f"{os.environ['STAMP_RESOURCES_DIR']}"
+                    model = timm.create_model("hf_hub:prov-gigapath/prov-gigapath", pretrained=True)
+                                        
+                    model_name = 'prov-gigapath'
+                    checkpoint = 'pytorch_model.bin'
+
+                    ckpt_dir = os.path.join(assets_dir, model_name)
+                    ckpt_path = os.path.join(assets_dir, model_name, checkpoint)
+
+                    # Ensure the directory exists
+                    os.makedirs(ckpt_dir, exist_ok=True)
+
+                    # Save the model
+                    torch.save(model.state_dict(), ckpt_path)
+                elif feat_extractor == 'hibou-b':
+                    print(f"Downloading Hibou weights")
+                    from transformers import AutoImageProcessor, AutoModel
+
+                    # Define paths
+                    assets_dir = f"{os.environ['STAMP_RESOURCES_DIR']}"
+                    model_name = 'hibou-b'
+                    checkpoint = 'pytorch_model.bin'
+
+                    ckpt_dir = os.path.join(assets_dir, model_name)
+                    ckpt_path = os.path.join(ckpt_dir, checkpoint)
+
+                    # Ensure the directory exists
+                    os.makedirs(ckpt_dir, exist_ok=True)
+
+                    # Load model and processor
+                    processor = AutoImageProcessor.from_pretrained("histai/hibou-b", trust_remote_code=True)
+                    hf_model = AutoModel.from_pretrained("histai/hibou-b", trust_remote_code=True)
+
+                    # Save the model state dict
+                    torch.save(hf_model.state_dict(), ckpt_path)
+
+                    # Save the processor
+                    processor_path = os.path.join(ckpt_dir, 'processor')
+                    processor.save_pretrained(processor_path)
+                elif feat_extractor == 'hibou-l':
+                    print(f"Downloading Hibou-L weights")
+                    from transformers import AutoImageProcessor, AutoModel
+
+                    # Define paths
+                    assets_dir = f"{os.environ['STAMP_RESOURCES_DIR']}"
+                    model_name = 'hibou-l'
+                    checkpoint = 'pytorch_model.bin'
+
+                    ckpt_dir = os.path.join(assets_dir, model_name)
+                    ckpt_path = os.path.join(ckpt_dir, checkpoint)
+
+                    # Ensure the directory exists
+                    os.makedirs(ckpt_dir, exist_ok=True)
+
+                    # Load model and processor
+                    processor = AutoImageProcessor.from_pretrained("histai/hibou-L", trust_remote_code=True)
+                    hf_model = AutoModel.from_pretrained("histai/hibou-L", trust_remote_code=True)
+
+                    # Save the model state dict
+                    torch.save(hf_model.state_dict(), ckpt_path)
+
+                    # Save the processor
+                    processor_path = os.path.join(ckpt_dir, 'processor')
+                    processor.save_pretrained(processor_path)
+                elif feat_extractor == 'kaiko':
+                    print("Downloading Kaiko weights")
+                    assets_dir = f"{os.environ['STAMP_RESOURCES_DIR']}"
+
+                    model_name = 'kaiko-vitl14'
+                    checkpoint = 'pytorch_model.bin'
+
+                    ckpt_dir = os.path.join(assets_dir, model_name)
+                    ckpt_path = os.path.join(ckpt_dir, checkpoint)
+
+                    # Ensure the directory exists
+                    os.makedirs(ckpt_dir, exist_ok=True)
+                    vitl14 = torch.hub.load("kaiko-ai/towards_large_pathology_fms", "vitl14", trust_repo=True)
+                    
+                    # Save the model state dict
+                    torch.save(vitl14.state_dict(), ckpt_path)
+
+                elif feat_extractor == 'conch':
+                    print("Downloading CONCH weights")
+                    assets_dir = f"{os.environ['STAMP_RESOURCES_DIR']}"
+                    from conch.open_clip_custom import create_model_from_pretrained
+                    model, preprocess = create_model_from_pretrained('conch_ViT-B-16', "hf_hub:MahmoodLab/conch")
+
+                    model_name = 'conch'
+                    checkpoint = 'pytorch_model.bin'
+
+                    ckpt_dir = os.path.join(assets_dir, model_name)
+                    ckpt_path = os.path.join(assets_dir, model_name, checkpoint)
+
+                    # Ensure the directory exists
+                    os.makedirs(ckpt_dir, exist_ok=True)
+
+                    # Save the model state dict
+                    torch.save(model.state_dict(), ckpt_path)
+                elif feat_extractor == 'phikon':
+                    print("Downloading Phikon weights")
+                    from transformers import AutoImageProcessor, AutoModel
+
+                    # Define paths
+                    assets_dir = f"{os.environ['STAMP_RESOURCES_DIR']}"
+                    model_name = 'phikon'
+                    checkpoint = 'pytorch_model.bin'
+
+                    ckpt_dir = os.path.join(assets_dir, model_name)
+                    ckpt_path = os.path.join(ckpt_dir, checkpoint)
+
+                    # Ensure the directory exists
+                    os.makedirs(ckpt_dir, exist_ok=True)
+
+                    # Load model and processor
+                    processor = AutoImageProcessor.from_pretrained("owkin/phikon")
+                    model = AutoModel.from_pretrained("owkin/phikon")
+
+                    # Save the model state dict
+                    torch.save(model.state_dict(), ckpt_path)
+
+                    # Save the processor
+                    processor_path = os.path.join(ckpt_dir, 'processor')
+                    processor.save_pretrained(processor_path)
+                elif feat_extractor == 'virchow':
+                    print("Downloading Virchow weights")
+                    assets_dir = f"{os.environ['STAMP_RESOURCES_DIR']}"
+
+                    from timm.layers import SwiGLUPacked
+                    # from huggingface_hub import login
+                    # login()
+
+                    model = timm.create_model("hf-hub:paige-ai/Virchow", pretrained=True, mlp_layer=SwiGLUPacked, act_layer=torch.nn.SiLU)
+                                        
+                    model_name = 'virchow'
+                    checkpoint = 'pytorch_model.bin'
+
+                    ckpt_dir = os.path.join(assets_dir, model_name)
+                    ckpt_path = os.path.join(assets_dir, model_name, checkpoint)
+
+                    # Ensure the directory exists
+                    os.makedirs(ckpt_dir, exist_ok=True)
+
+                    # Save the model
+                    torch.save(model.state_dict(), ckpt_path)
+                elif feat_extractor == 'virchow2':
+                    print("Downloading Virchow2 weights")
+                    assets_dir = f"{os.environ['STAMP_RESOURCES_DIR']}"
+
+                    from timm.layers import SwiGLUPacked
+                    # from huggingface_hub import login
+                    # login()
+
+                    model = timm.create_model("hf-hub:paige-ai/Virchow2", pretrained=True, mlp_layer=SwiGLUPacked, act_layer=torch.nn.SiLU)
+                                        
+                    model_name = 'virchow2'
+                    checkpoint = 'pytorch_model.bin'
+
+                    ckpt_dir = os.path.join(assets_dir, model_name)
+                    ckpt_path = os.path.join(assets_dir, model_name, checkpoint)
+
+                    # Ensure the directory exists
+                    os.makedirs(ckpt_dir, exist_ok=True)
+
+                    # Save the model
+                    torch.save(model.state_dict(), ckpt_path)
+                elif feat_extractor == 'hoptimus0':
+                    print("Downloading H-optimus-0 weights")
+                    assets_dir = f"{os.environ['STAMP_RESOURCES_DIR']}"
+
+                    model = model = timm.create_model("hf-hub:bioptimus/H-optimus-0", pretrained=True, init_values=1e-5, dynamic_img_size=False)          
+                    model_name = 'hoptimus0'
+                    checkpoint = 'pytorch_model.bin'
+
+                    ckpt_dir = os.path.join(assets_dir, model_name)
+                    ckpt_path = os.path.join(assets_dir, model_name, checkpoint)
+
+                    # Ensure the directory exists
+                    os.makedirs(ckpt_dir, exist_ok=True)
+
+                    # Save the model
+                    torch.save(model.state_dict(), ckpt_path)
+                
         case "config":
             print(OmegaConf.to_yaml(cfg, resolve=True))
         case "preprocess":
             require_configs(
                 cfg,
                 ["output_dir", "wsi_dir", "cache_dir", "microns", "cores", "norm", "del_slide", "only_feature_extraction", "device", "feat_extractor"],
-                prefix="preprocessing",
-                paths_to_check=["wsi_dir"]
+                prefix="preprocessing"
             )
             c = cfg.preprocessing
             # Some checks
@@ -153,10 +329,32 @@ def run_cli(args: argparse.Namespace):
                 raise ConfigurationError(f"Normalization template {normalization_template_path} does not exist, please run `stamp setup` to download it.")
             if c.feat_extractor == 'ctp':
                 model_path = f"{os.environ['STAMP_RESOURCES_DIR']}/ctranspath.pth"
+            elif c.feat_extractor == 'chief-ctp':
+                model_path = f"{os.environ['STAMP_RESOURCES_DIR']}/chief-ctp.pth"
             elif c.feat_extractor == 'uni':
                 model_path = f"{os.environ['STAMP_RESOURCES_DIR']}/uni/vit_large_patch16_224.dinov2.uni_mass100k/pytorch_model.bin"
+            elif c.feat_extractor == 'provgp':
+                model_path = f"{os.environ['STAMP_RESOURCES_DIR']}/prov-gigapath/pytorch_model.bin"
+            elif c.feat_extractor == 'hibou-b':
+                model_path = f"{os.environ['STAMP_RESOURCES_DIR']}/hibou-b/pytorch_model.bin"
+            elif c.feat_extractor == 'hibou-l':
+                model_path = f"{os.environ['STAMP_RESOURCES_DIR']}/hibou-l/pytorch_model.bin"
+            elif c.feat_extractor == 'kaiko':
+                model_path = f"{os.environ['STAMP_RESOURCES_DIR']}/kaiko-vitl14/pytorch_model.bin"
+            elif c.feat_extractor == 'conch':
+                model_path = f"{os.environ['STAMP_RESOURCES_DIR']}/conch/pytorch_model.bin"
+            elif c.feat_extractor == 'phikon':
+                model_path = f"{os.environ['STAMP_RESOURCES_DIR']}/phikon/pytorch_model.bin"
+            elif c.feat_extractor == 'virchow':
+                model_path = f"{os.environ['STAMP_RESOURCES_DIR']}/virchow/pytorch_model.bin"
+            elif c.feat_extractor == 'virchow2':
+                model_path = f"{os.environ['STAMP_RESOURCES_DIR']}/virchow2/pytorch_model.bin"
+            elif c.feat_extractor == 'hoptimus0':
+                model_path = f"{os.environ['STAMP_RESOURCES_DIR']}/hoptimus0/pytorch_model.bin"
+          
             if not Path(model_path).exists():
                 raise ConfigurationError(f"Feature extractor model {model_path} does not exist, please run `stamp setup` to download it.")
+
             from .preprocessing.wsi_norm import preprocess
             preprocess(
                 output_dir=Path(c.output_dir),
@@ -178,9 +376,8 @@ def run_cli(args: argparse.Namespace):
         case "train":
             require_configs(
                 cfg,
-                ["clini_table", "slide_table", "output_dir", "feature_dir", "target_label", "cat_labels", "cont_labels"],
-                prefix="modeling",
-                paths_to_check=["clini_table", "slide_table", "feature_dir"]
+                ["output_dir", "feature_dir", "target_label", "cat_labels", "cont_labels"],
+                prefix="modeling"
             )
             c = cfg.modeling
             from .modeling.marugoto.transformer.helpers import train_categorical_model_
@@ -195,9 +392,8 @@ def run_cli(args: argparse.Namespace):
         case "crossval":
             require_configs(
                 cfg,
-                ["clini_table", "slide_table", "output_dir", "feature_dir", "target_label", "cat_labels", "cont_labels", "n_splits"], # this one requires the n_splits key!
-                prefix="modeling",
-                paths_to_check=["clini_table", "slide_table", "feature_dir"]
+                ["output_dir", "feature_dir", "target_label", "cat_labels", "cont_labels", "n_splits"], # this one requires the n_splits key!
+                prefix="modeling"
             )
             c = cfg.modeling
             from .modeling.marugoto.transformer.helpers import categorical_crossval_
@@ -213,9 +409,8 @@ def run_cli(args: argparse.Namespace):
         case "deploy":
             require_configs(
                 cfg,
-                ["clini_table", "slide_table", "output_dir", "deploy_feature_dir", "target_label", "cat_labels", "cont_labels", "model_path"], # this one requires the model_path key!
-                prefix="modeling",
-                paths_to_check=["clini_table", "slide_table", "deploy_feature_dir"]
+                ["output_dir", "deploy_feature_dir", "target_label", "cat_labels", "cont_labels", "model_path"], # this one requires the model_path key!
+                prefix="modeling"
             )
             c = cfg.modeling
             from .modeling.marugoto.transformer.helpers import deploy_categorical_model_
@@ -227,14 +422,11 @@ def run_cli(args: argparse.Namespace):
                                       cat_labels=c.cat_labels,
                                       cont_labels=c.cont_labels,
                                       model_path=Path(c.model_path))
-            print("Successfully deployed models")
         case "statistics":
             require_configs(
                 cfg,
                 ["pred_csvs", "target_label", "true_class", "output_dir"],
-                prefix="modeling.statistics",
-                paths_to_check=["pred_csvs"]
-            )
+                prefix="modeling.statistics")
             from .modeling.statistics import compute_stats
             c = cfg.modeling.statistics
             if isinstance(c.pred_csvs,str):
@@ -243,14 +435,11 @@ def run_cli(args: argparse.Namespace):
                           target_label=c.target_label,
                           true_class=c.true_class,
                           output_dir=Path(c.output_dir))
-            print("Successfully calculated statistics")
         case "heatmaps":
             require_configs(
                 cfg,
-                ["feature_dir","wsi_dir","model_path","output_dir", "n_toptiles", "overview"], 
-                prefix="heatmaps",
-                paths_to_check=["feature_dir","wsi_dir","model_path"]
-            )
+                ["feature_dir","wsi_dir","model_path","output_dir", "n_toptiles"], 
+                prefix="heatmaps")
             c = cfg.heatmaps
             from .heatmaps.__main__ import main
             main(slide_name=str(c.slide_name),
@@ -260,7 +449,6 @@ def run_cli(args: argparse.Namespace):
                  output_dir=Path(c.output_dir),
                  n_toptiles=int(c.n_toptiles),
                  overview=c.overview)
-            print("Successfully produced heatmaps")
         case _:
             raise ConfigurationError(f"Unknown command {args.command}")
 

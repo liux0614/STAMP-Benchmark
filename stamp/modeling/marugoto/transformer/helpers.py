@@ -28,9 +28,9 @@ class IncompatibleVersionError(Exception):
     pass
 
 
-def safe_load_learner(model_path, use_cpu):    
+def safe_load_learner(model_path, use_cpu):
     try:
-        learn = load_learner(model_path, cpu=use_cpu) # if False will use GPU instead
+        learn = load_learner(model_path, cpu=use_cpu)
         return learn
     except ModuleNotFoundError as e:
         if e.name == "stamp.modeling.marugoto.transformer.ViT":
@@ -197,10 +197,10 @@ def deploy_categorical_model_(
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if device.type == "cuda":
         # allow for usage of TensorFloat32 as internal dtype for matmul on modern NVIDIA GPUs
-        torch.set_float32_matmul_precision("high")
-    
+        torch.set_float32_matmul_precision("medium")
+
     use_cpu= (device.type == "cpu") # True or False
-    
+
     feature_dir = Path(feature_dir)
     model_path = Path(model_path)
     output_path = Path(output_path)
@@ -218,7 +218,12 @@ def deploy_categorical_model_(
     cont_labels = cont_labels or learn.cont_labels
 
     test_df = get_cohort_df(clini_table, slide_table, feature_dir, target_label, categories)
-
+    # print("Test DF")
+    # print(test_df)
+    # print("Target Label")
+    # print(target_label)
+    # print("Learn")
+    # print(learn)
     patient_preds_df = deploy(test_df=test_df, learn=learn, target_label=target_label, device=device)
     output_path.mkdir(parents=True, exist_ok=True)
     patient_preds_df.to_csv(preds_csv, index=False)
@@ -245,14 +250,17 @@ def categorical_crossval_(
         categories:  Categories to train for, or all categories appearing in the
             clini table if none given (e.g. '["MSIH", "nonMSIH"]').
     """
-    feature_dir = Path(feature_dir)
-    output_path = Path(output_path)
-    output_path.mkdir(exist_ok=True, parents=True)
-
+    use_cpu=True
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if device.type == "cuda":
         # allow for usage of TensorFloat32 as internal dtype for matmul on modern NVIDIA GPUs
-        torch.set_float32_matmul_precision("high")
+        torch.set_float32_matmul_precision("medium")
+
+    use_cpu= (device.type == "cpu") # True or False
+
+    feature_dir = Path(feature_dir)
+    output_path = Path(output_path)
+    output_path.mkdir(exist_ok=True, parents=True)
 
     # just a big fat object to dump all kinds of info into for later reference
     # not used during actual training
@@ -323,7 +331,7 @@ def categorical_crossval_(
             print(f'{preds_csv} already exists!  Skipping...')
             continue
         elif (fold_path/'export.pkl').exists():
-            learn = safe_load_learner(fold_path/'export.pkl')
+            learn = safe_load_learner(fold_path/'export.pkl', use_cpu=use_cpu)
         else:
             fold_train_df = df.iloc[train_idxs]
             learn = _crossval_train(
@@ -336,8 +344,7 @@ def categorical_crossval_(
         fold_test_df.drop(columns='slide_path').to_csv(fold_path/'test.csv', index=False)
         patient_preds_df = deploy(
             test_df=fold_test_df, learn=learn,
-            target_label=target_label, cat_labels=cat_labels, 
-            cont_labels=cont_labels, device=device)
+            target_label=target_label, cat_labels=cat_labels, cont_labels=cont_labels, device=device)
         patient_preds_df.to_csv(preds_csv, index=False)
 
 

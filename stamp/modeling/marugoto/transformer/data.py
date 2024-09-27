@@ -312,6 +312,10 @@ def get_cohort_df(
     if 'FILENAME' in clini_df.columns and 'FILENAME' in slide_df.columns:
         clini_df = clini_df.drop(columns=['FILENAME'])
     
+
+    # Ensure FILENAME column in slide_df has consistent format (remove .h5 if present)
+    slide_df['FILENAME'] = slide_df['FILENAME'].str.replace('.h5', '', regex=False)
+
     df = clini_df.merge(slide_df, on='PATIENT')
     # remove uninteresting
     df = df[df[target_label].isin(categories)]
@@ -320,6 +324,7 @@ def get_cohort_df(
     assert h5s, f'no features found in {feature_dir}!'
     h5_df = pd.DataFrame(h5s, columns=['slide_path'])
     h5_df['FILENAME'] = h5_df.slide_path.map(lambda p: p.stem)
+
     df = df.merge(h5_df, on='FILENAME')
 
     # reduce to one row per patient with list of slides in `df['slide_path']`

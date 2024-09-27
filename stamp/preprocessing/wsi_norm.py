@@ -25,7 +25,7 @@ from .helpers import stainNorm_Macenko
 from .helpers.common import supported_extensions
 from .helpers.concurrent_canny_rejection import reject_background
 from .helpers.loading_slides import process_slide_jpg, load_slide, get_raw_tile_list
-from .helpers.feature_extractors import FeatureExtractorCTP, FeatureExtractorUNI, extract_features_
+from .helpers.feature_extractors import FeatureExtractorCTP, FeatureExtractorChiefCTP, FeatureExtractorUNI, FeatureExtractorProvGP, FeatureExtractorHibouB, FeatureExtractorHibouL, FeatureExtractorKaiko, FeatureExtractorConch, FeatureExtractorPhikon, FeatureExtractorVirchow, FeatureExtractorVirchow2, FeatureExtractorHOptimus0, extract_features_
 from .helpers.exceptions import MPPExtractionError
 
 
@@ -76,13 +76,33 @@ def preprocess(output_dir: Path, wsi_dir: Path, model_path: Path, cache_dir: Pat
     target_mpp = target_microns/patch_size
     patch_shape = (patch_size, patch_size) #(224, 224) by default
     step_size = patch_size #have 0 overlap by default
-    
+    slide_encoder=None
     # Initialize the feature extraction model
     print(f"Initialising feature extractor {feat_extractor}...")
     if feat_extractor == "ctp":
         extractor = FeatureExtractorCTP(checkpoint_path=model_path)
+    elif feat_extractor == "chief-ctp":
+        extractor = FeatureExtractorChiefCTP(checkpoint_path=model_path)
     elif feat_extractor == "uni":
         extractor = FeatureExtractorUNI()
+    elif feat_extractor == "provgp":
+        extractor = FeatureExtractorProvGP()
+    elif feat_extractor == "hibou-b":
+        extractor = FeatureExtractorHibouB()
+    elif feat_extractor == "hibou-l":
+        extractor = FeatureExtractorHibouL()
+    elif feat_extractor == "kaiko":
+        extractor = FeatureExtractorKaiko()
+    elif feat_extractor == "conch":
+        extractor = FeatureExtractorConch()
+    elif feat_extractor == "phikon":
+        extractor = FeatureExtractorPhikon()
+    elif feat_extractor == "virchow":
+        extractor = FeatureExtractorVirchow()
+    elif feat_extractor == "virchow2":
+        extractor = FeatureExtractorVirchow2()
+    elif feat_extractor == "hoptimus0":
+        extractor = FeatureExtractorHOptimus0()
     else:
         raise Exception(f"Invalid feature extractor '{feat_extractor}' selected")
 
@@ -201,7 +221,7 @@ def preprocess(output_dir: Path, wsi_dir: Path, model_path: Path, cache_dir: Pat
                     del slide                    
                     print(f"\nLoaded slide: {time.time() - start_time:.2f} seconds")
                     print(f"\nSize of WSI: {slide_array.shape}")
-                        
+
                     if cache:
                         # Save raw .svs jpg
                         raw_image = PIL.Image.fromarray(slide_array)
@@ -242,7 +262,8 @@ def preprocess(output_dir: Path, wsi_dir: Path, model_path: Path, cache_dir: Pat
                     extract_features_(model=extractor.model, transform=extractor.transform, model_name=model_name,
                                       norm_wsi_img=canny_norm_patch_list, coords=coords_list, wsi_name=slide_name,
                                       outdir=feat_out_dir, cores=cores, is_norm=norm, device=device if has_gpu else "cpu",
-                                      target_microns=target_microns, patch_size=patch_size)
+                                      target_microns=target_microns, patch_size=patch_size,
+                                      processor = extractor.processor if (feat_extractor == "hibou-l" or feat_extractor == "hibou-b" or feat_extractor == "conch" or feat_extractor == "phikon") else None)
                     logging.info(f"Extracted features from slide: {time.time() - start_time:.2f} seconds ({len(canny_norm_patch_list)} tiles)")
                     num_processed += 1
                 else:
