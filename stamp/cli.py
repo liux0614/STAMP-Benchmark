@@ -114,6 +114,12 @@ def run_cli(args: argparse.Namespace):
                 model_path = Path(f"{os.environ['STAMP_RESOURCES_DIR']}/virchow2/pytorch_model.bin")
             elif feat_extractor == 'hoptimus0':
                 model_path = Path(f"{os.environ['STAMP_RESOURCES_DIR']}/hoptimus0/pytorch_model.bin")
+            elif feat_extractor == 'plip':
+                model_path = Path(f"{os.environ['STAMP_RESOURCES_DIR']}/plip/pytorch_model.bin")
+            elif feat_extractor == 'biomedclip':
+                model_path = Path(f"{os.environ['STAMP_RESOURCES_DIR']}/biomedclip/pytorch_model.bin")
+            elif feat_extractor == 'dinosslpath':
+                model_path = Path(f"{os.environ['STAMP_RESOURCES_DIR']}/dinosslpath/pytorch_model.bin")
             model_path.parent.mkdir(parents=True, exist_ok=True)
             if model_path.exists():
                 print(f"Skipping download, feature extractor model already exists at {model_path}")
@@ -313,7 +319,73 @@ def run_cli(args: argparse.Namespace):
 
                     # Save the model
                     torch.save(model.state_dict(), ckpt_path)
-                
+                elif feat_extractor == 'plip':
+                    print("Downloading PLIP weights")
+                    from transformers import CLIPProcessor, CLIPModel
+
+                    # Define paths
+                    assets_dir = f"{os.environ['STAMP_RESOURCES_DIR']}"
+                    model_name = 'plip'
+                    checkpoint = 'pytorch_model.bin'
+
+                    ckpt_dir = os.path.join(assets_dir, model_name)
+                    ckpt_path = os.path.join(ckpt_dir, checkpoint)
+
+                    # Ensure the directory exists
+                    os.makedirs(ckpt_dir, exist_ok=True)
+
+                    # Load model and processor
+                    model = CLIPModel.from_pretrained("vinid/plip")
+                    processor = CLIPProcessor.from_pretrained("vinid/plip")
+
+                    # Save the model state dict
+                    torch.save(model.state_dict(), ckpt_path)
+
+                    # Save the processor
+                    processor_path = os.path.join(ckpt_dir, 'processor')
+                    processor.save_pretrained(processor_path)
+                elif feat_extractor == 'biomedclip':
+                    print("Downloading BiomedCLIP weights")
+                    from open_clip import create_model_from_pretrained, get_tokenizer
+
+                    # Define paths
+                    assets_dir = f"{os.environ['STAMP_RESOURCES_DIR']}"
+                    model_name = 'biomedclip'
+                    checkpoint = 'pytorch_model.bin'
+
+                    ckpt_dir = os.path.join(assets_dir, model_name)
+                    ckpt_path = os.path.join(ckpt_dir, checkpoint)
+
+                    # Ensure the directory exists
+                    os.makedirs(ckpt_dir, exist_ok=True)
+
+                    # Load model and processor
+                    model, processor = create_model_from_pretrained('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224')
+
+                    # Save the model state dict
+                    torch.save(model.state_dict(), ckpt_path)
+                elif feat_extractor == 'dinosslpath':
+                    print("Downloading DinoSSLPath weights")
+
+                    # Define paths
+                    assets_dir = f"{os.environ['STAMP_RESOURCES_DIR']}"
+                    model_name = 'dinosslpath'
+                    checkpoint = 'pytorch_model.bin'
+
+                    ckpt_dir = os.path.join(assets_dir, model_name)
+                    ckpt_path = os.path.join(ckpt_dir, checkpoint)
+
+                    # Ensure the directory exists
+                    os.makedirs(ckpt_dir, exist_ok=True)
+
+                    # Pretrained weights URL
+                    pretrained_url = "https://github.com/lunit-io/benchmark-ssl-pathology/releases/download/pretrained-weights/dino_vit_small_patch16_ep200.torch"
+
+                    # Download and save the state_dict without loading into a model
+                    state_dict = torch.hub.load_state_dict_from_url(pretrained_url, map_location='cpu', progress=True)
+
+                    # Save the state_dict to the specified path
+                    torch.save(state_dict, ckpt_path)
         case "config":
             print(OmegaConf.to_yaml(cfg, resolve=True))
         case "preprocess":
@@ -351,6 +423,12 @@ def run_cli(args: argparse.Namespace):
                 model_path = f"{os.environ['STAMP_RESOURCES_DIR']}/virchow2/pytorch_model.bin"
             elif c.feat_extractor == 'hoptimus0':
                 model_path = f"{os.environ['STAMP_RESOURCES_DIR']}/hoptimus0/pytorch_model.bin"
+            elif c.feat_extractor == 'plip':
+                model_path = f"{os.environ['STAMP_RESOURCES_DIR']}/plip/pytorch_model.bin"
+            elif c.feat_extractor == 'biomedclip':
+                model_path = f"{os.environ['STAMP_RESOURCES_DIR']}/biomedclip/pytorch_model.bin"
+            elif c.feat_extractor == 'dinosslpath':
+                model_path = f"{os.environ['STAMP_RESOURCES_DIR']}/dinosslpath/pytorch_model.bin"
           
             if not Path(model_path).exists():
                 raise ConfigurationError(f"Feature extractor model {model_path} does not exist, please run `stamp setup` to download it.")

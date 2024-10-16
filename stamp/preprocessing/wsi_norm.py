@@ -25,7 +25,7 @@ from .helpers import stainNorm_Macenko
 from .helpers.common import supported_extensions
 from .helpers.concurrent_canny_rejection import reject_background
 from .helpers.loading_slides import process_slide_jpg, load_slide, get_raw_tile_list
-from .helpers.feature_extractors import FeatureExtractorCTP, FeatureExtractorChiefCTP, FeatureExtractorUNI, FeatureExtractorProvGP, FeatureExtractorHibouB, FeatureExtractorHibouL, FeatureExtractorKaiko, FeatureExtractorConch, FeatureExtractorPhikon, FeatureExtractorVirchow, FeatureExtractorVirchow2, FeatureExtractorHOptimus0, extract_features_
+from .helpers.feature_extractors import FeatureExtractorCTP, FeatureExtractorChiefCTP, FeatureExtractorUNI, FeatureExtractorProvGP, FeatureExtractorHibouB, FeatureExtractorHibouL, FeatureExtractorKaiko, FeatureExtractorConch, FeatureExtractorPhikon, FeatureExtractorVirchow, FeatureExtractorVirchow2, FeatureExtractorHOptimus0,  FeatureExtractorPLIP, FeatureExtractorBiomedCLIP, FeatureExtractorDinoSSLPath, extract_features_
 from .helpers.exceptions import MPPExtractionError
 
 
@@ -103,6 +103,12 @@ def preprocess(output_dir: Path, wsi_dir: Path, model_path: Path, cache_dir: Pat
         extractor = FeatureExtractorVirchow2()
     elif feat_extractor == "hoptimus0":
         extractor = FeatureExtractorHOptimus0()
+    elif feat_extractor == "plip":
+        extractor = FeatureExtractorPLIP()
+    elif feat_extractor == "biomedclip":
+        extractor = FeatureExtractorBiomedCLIP()
+    elif feat_extractor == "dinosslpath":
+        extractor = FeatureExtractorDinoSSLPath()
     else:
         raise Exception(f"Invalid feature extractor '{feat_extractor}' selected")
 
@@ -263,7 +269,7 @@ def preprocess(output_dir: Path, wsi_dir: Path, model_path: Path, cache_dir: Pat
                                       norm_wsi_img=canny_norm_patch_list, coords=coords_list, wsi_name=slide_name,
                                       outdir=feat_out_dir, cores=cores, is_norm=norm, device=device if has_gpu else "cpu",
                                       target_microns=target_microns, patch_size=patch_size,
-                                      processor = extractor.processor if (feat_extractor == "hibou-l" or feat_extractor == "hibou-b" or feat_extractor == "conch" or feat_extractor == "phikon") else None)
+                                      processor = extractor.processor if (feat_extractor == "hibou-l" or feat_extractor == "hibou-b" or feat_extractor == "conch" or feat_extractor == "phikon" or feat_extractor == "plip" or feat_extractor == "biomedclip") else None)
                     logging.info(f"Extracted features from slide: {time.time() - start_time:.2f} seconds ({len(canny_norm_patch_list)} tiles)")
                     num_processed += 1
                 else:

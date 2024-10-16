@@ -427,7 +427,102 @@ class FeatureExtractorHOptimus0:
 
         print("H-optimus-0 model successfully initialized...\n")
         return model_name
+
+class FeatureExtractorPLIP:
+    def init_feat_extractor(self, device: str, **kwargs):
+        """Extracts features from slide tiles using PLIP tile encoder."""
+        
+        assets_dir = f"{os.environ['STAMP_RESOURCES_DIR']}"
+        model_name = 'plip'
+        checkpoint = 'pytorch_model.bin'
+
+        ckpt_dir = os.path.join(assets_dir, model_name)
+        ckpt_path = os.path.join(ckpt_dir, checkpoint)
+        processor_path = os.path.join(ckpt_dir, 'processor')
+
+        # Load the processor
+        self.processor = AutoImageProcessor.from_pretrained(processor_path, trust_remote_code=True)
+
+        # Load the model configuration
+        config = AutoConfig.from_pretrained("vinid/plip", trust_remote_code=True)
+
+        # Initialize the model with the config
+        self.model = AutoModel.from_config(config, trust_remote_code=True)
+
+        if torch.cuda.is_available():
+            self.model = self.model.to(device)
+
+        self.transform = transforms.Compose([
+            transforms.Resize(224),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ])
+
+        print("PLIP model successfully initialised...\n")
+        return model_name
+
+class FeatureExtractorBiomedCLIP:
+    def init_feat_extractor(self, device: str, **kwargs):
+        """Extracts features from slide tiles using BiomedCLIP tile encoder."""
+        
+        assets_dir = f"{os.environ['STAMP_RESOURCES_DIR']}"
+        model_name = 'biomedclip'
+        checkpoint = 'pytorch_model.bin'
+
+        ckpt_dir = os.path.join(assets_dir, model_name)
+        ckpt_path = os.path.join(ckpt_dir, checkpoint)
+
+        from open_clip import create_model_from_pretrained
+
+        self.model, self.processor = create_model_from_pretrained('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224', ckpt_path)
+
+        if torch.cuda.is_available():
+            self.model = self.model.to(device)
+
+        self.transform = transforms.Compose([
+            transforms.Resize(224),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ])
+
+        print("BiomedCLIP model successfully initialised...\n")
+        return model_name
     
+class FeatureExtractorDinoSSLPath:
+    def init_feat_extractor(self, device: str, **kwargs):
+        """Extracts features from slide tiles using DinoSSLPath tile encoder."""
+        from timm.models.vision_transformer import VisionTransformer
+        
+        assets_dir = f"{os.environ['STAMP_RESOURCES_DIR']}"
+        model_name = 'dinosslpath'
+        checkpoint = 'pytorch_model.bin'
+
+        ckpt_dir = os.path.join(assets_dir, model_name)
+        ckpt_path = os.path.join(ckpt_dir, checkpoint)
+
+        self.model = VisionTransformer(
+            img_size=224, patch_size=16, embed_dim=384, num_heads=6, num_classes=0
+        )
+
+        self.model.load_state_dict(torch.load(ckpt_path))
+
+        if torch.cuda.is_available():
+            self.model = self.model.to(device)
+
+        LUNIT_MEAN = (0.70322989, 0.53606487, 0.66096631)
+        LUNIT_STD = (0.21716536, 0.26081574, 0.20723464)
+
+        self.transform = transforms.Compose([
+            transforms.Resize(224),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=LUNIT_MEAN, std=LUNIT_STD)
+        ])
+
+        print("DinoSSLPath model successfully initialised...\n")
+        return model_name    
 
 T = TypeVar("T")
 
@@ -540,7 +635,18 @@ def extract_features_(
                 hf_output = model(**hf_data)
                 output = hf_output.pooler_output # Use last_hidden_state for detailed spatial info
                 feats.append(output.cpu().detach().half())
-
+            elif model_name == "biomedclip":
+                processed_images = []
+                for image in batch:
+                    processed = processor(image)
+                    processed_images.append(processed)
+                processed_batch = torch.stack(processed_images).to(device, dtype=dtype)
+                logits = model.encode_image(processed_batch)
+                feats.append(logits.cpu().detach().half())
+            elif model_name == "plip":
+                inputs = processor(images=batch, return_tensors="pt").to(device)
+                output = model.get_image_features(**inputs)
+                feats.append(output.cpu().detach().half())
             elif model_name == "conch":
                 processed_images = []
                 for image in batch:
@@ -605,6 +711,12 @@ def extract_features_(
                 g.attrs['extractor'] = extractor_string
         elif model_name == "hoptimus0":
             assert len(all_feats.shape) == 2 and all_feats.shape[1] == 1536, all_feats.shape
+        elif model_name == "plip":
+            assert len(all_feats.shape) == 2 and all_feats.shape[1] == 512, all_feats.shape
+        elif model_name == "biomedclip":
+            assert len(all_feats.shape) == 2 and all_feats.shape[1] == 512, all_feats.shape
+        elif model_name == "dinosslpath":
+            assert len(all_feats.shape) == 2 and all_feats.shape[1] == 384, all_feats.shape
         else:
             print(f"Model name did not match any known patterns: {model_name}")
             print(f"Shape of all_feats: {all_feats.shape}")
