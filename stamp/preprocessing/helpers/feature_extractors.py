@@ -449,6 +449,8 @@ class FeatureExtractorPLIP:
         # Initialize the model with the config
         self.model = AutoModel.from_config(config, trust_remote_code=True)
 
+        self.model.load_state_dict(torch.load(ckpt_path))
+
         if torch.cuda.is_available():
             self.model = self.model.to(device)
 
