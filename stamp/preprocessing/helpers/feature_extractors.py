@@ -16,7 +16,6 @@ from collections.abc import Iterable
 import timm
 import itertools
 from transformers import AutoImageProcessor, AutoModel, AutoConfig
-from conch.open_clip_custom import create_model_from_pretrained
 from typing import TypeVar, Callable
 import sys
 
@@ -260,6 +259,7 @@ class FeatureExtractorKaiko:
 class FeatureExtractorConch:
     def init_feat_extractor(self, device: str, **kwargs):
         """Extracts features from slide tiles using CONCH tile encoder."""
+        from conch.open_clip_custom import create_model_from_pretrained
         
         assets_dir = f"{os.environ['STAMP_RESOURCES_DIR']}"
         model_name = 'conch'
@@ -269,7 +269,7 @@ class FeatureExtractorConch:
         ckpt_path = os.path.join(ckpt_dir, checkpoint)
 
         # Initialize the model (you may need to pass other necessary parameters as per the create_model_from_pretrained function)
-        self.model, self.processor = create_model_from_pretrained('conch_ViT-B-16', ckpt_path, force_image_size=224)
+        self.model, self.processor = create_model_from_pretrained('_ViT-B-16', ckpt_path, force_image_size=224)
 
         if torch.cuda.is_available():
             self.model = self.model.to(device)
