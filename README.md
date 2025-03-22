@@ -29,7 +29,7 @@ conda install -c conda-forge libstdcxx-ng=12
 
 Then, install the STAMP package via `pip`:
 ```bash
-pip install git+https://github.com/KatherLab/STAMP
+pip install git+https://github.com/liux0614/STAMP-Benchmark
 ```
 
 Once installed, you will be able to run the command line interface directly using the `stamp` command.
